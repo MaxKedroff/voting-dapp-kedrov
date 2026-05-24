@@ -1,83 +1,242 @@
-# 🏗 Scaffold-ETH 2
+# Voting DApp — «За / Против» на блокчейне
 
-<h4 align="center">
-  <a href="https://docs.scaffoldeth.io">Documentation</a> |
-  <a href="https://scaffoldeth.io">Website</a>
-</h4>
+Децентрализованное приложение для прозрачного голосования. Исключает повторное голосование, хранит данные в смарт-контракте, работает через MetaMask.
 
-🧪 An open-source, up-to-date toolkit for building decentralized applications (dapps) on the Ethereum blockchain. It's designed to make it easier for developers to create and deploy smart contracts and build user interfaces that interact with those contracts.
+---
 
-> [!NOTE]
-> 🤖 Scaffold-ETH 2 is AI-ready! It has everything agents need to build on Ethereum. Check `.agents/`, `.claude/`, `.opencode` or `.cursor/` for more info.
+## Что делает приложение
 
-⚙️ Built using NextJS, RainbowKit, Hardhat, Wagmi, Viem, and Typescript.
+- Пользователь подключает MetaMask и голосует **«За»** или **«Против»**
+- Один адрес = один голос
+- Результаты хранятся в блокчейне и доступны всем
+- Каждая транзакция требует подтверждения в кошельке
 
-- ✅ **Contract Hot Reload**: Your frontend auto-adapts to your smart contract as you edit it.
-- 🪝 **[Custom hooks](https://docs.scaffoldeth.io/hooks/)**: Collection of React hooks wrapper around [wagmi](https://wagmi.sh/) to simplify interactions with smart contracts with typescript autocompletion.
-- 🧱 [**Components**](https://docs.scaffoldeth.io/components/): Collection of common web3 components to quickly build your frontend.
-- 🔥 **Burner Wallet & Local Faucet**: Quickly test your application with a burner wallet and local faucet.
-- 🔐 **Integration with Wallet Providers**: Connect to different wallet providers and interact with the Ethereum network.
+---
 
-![Debug Contracts tab](https://github.com/scaffold-eth/scaffold-eth-2/assets/55535804/b237af0c-5027-4849-a5c1-2e31495cccb1)
+## Технологии
 
-## Requirements
+- **Смарт-контракт** — Solidity (Ethereum)
+- **Локальная сеть** — Hardhat
+- **Frontend** — Next.js + Scaffold-ETH-2
+- **Подключение кошелька** — RainbowKit + Wagmi
+- **Тесты** — Hardhat + Chai
 
-Before you begin, you need to install the following tools:
+---
 
-- [Node (>= v20.18.3)](https://nodejs.org/en/download/)
-- Yarn ([v1](https://classic.yarnpkg.com/en/docs/install/) or [v2+](https://yarnpkg.com/getting-started/install))
-- [Git](https://git-scm.com/downloads)
+## Архитектура приложения
 
-## Quickstart
+Приложение состоит из трёх основных компонентов:
 
-To get started with Scaffold-ETH 2, follow the steps below:
+1. **Смарт-контракт на Solidity** — хранит голоса, проверяет, голосовал ли пользователь, генерирует события
+2. **Frontend-интерфейс** — подключает MetaMask, отправляет транзакции, отображает результаты
+3. **Локальная сеть Hardhat** — используется для разработки и тестирования
 
-1. Install dependencies if it was skipped in CLI:
+Взаимодействие происходит по схеме:
 
-```
-cd my-dapp-example
-yarn install
-```
+Пользователь → MetaMask → Frontend → Смарт-контракт → Блокчейн
 
-2. Run a local network in the first terminal:
+Центрального сервера нет — все данные хранятся в блокчейне.
 
-```
-yarn chain
-```
+---
 
-This command starts a local Ethereum network using Hardhat. The network runs on your local machine and can be used for testing and development. You can customize the network configuration in `packages/hardhat/hardhat.config.ts`.
+## Смарт-контракт (Voting.sol)
 
-3. On a second terminal, deploy the test contract:
+### Переменные состояния
 
-```
-yarn deploy
+```solidity
+uint256 public votesFor;      // голоса «За»
+uint256 public votesAgainst;  // голоса «Против»
+
+mapping(address => bool) public hasVoted;
+// защита от повторного голосования
 ```
 
-This command deploys a test smart contract to the local network. The contract is located in `packages/hardhat/contracts` and can be modified to suit your needs. The `yarn deploy` command uses the deploy script located in `packages/hardhat/deploy` to deploy the contract to the network. You can also customize the deploy script.
+### События
 
-4. On a third terminal, start your NextJS app:
-
+```solidity
+event Voted(address voter, bool choice);
+// choice = true — За, false — Против
 ```
-yarn start
+
+### Защита от повторного голосования
+
+```solidity
+modifier notVoted() {
+    require(!hasVoted[msg.sender], "You already voted");
+    _;
+}
 ```
 
-Visit your app on: `http://localhost:3000`. You can interact with your smart contract using the `Debug Contracts` page. You can tweak the app config in `packages/nextjs/scaffold.config.ts`.
+### Основные функции
 
-Run smart contract test with `yarn hardhat:test`
+| Функция | Действие |
+|---|---|
+| `voteFor()` | Увеличивает `votesFor`, помечает пользователя как проголосовавшего, генерирует событие |
+| `voteAgainst()` | Увеличивает `votesAgainst`, помечает пользователя как проголосовавшего, генерирует событие |
+| `getResults()` | Возвращает оба счётчика (`view`-функция) |
 
-- Edit your smart contracts in `packages/hardhat/contracts`
-- Edit your frontend homepage at `packages/nextjs/app/page.tsx`. For guidance on [routing](https://nextjs.org/docs/app/building-your-application/routing/defining-routes) and configuring [pages/layouts](https://nextjs.org/docs/app/building-your-application/routing/pages-and-layouts) checkout the Next.js documentation.
-- Edit your deployment scripts in `packages/hardhat/deploy`
+Все `write`-функции используют модификатор `notVoted`.
 
+---
 
-## Documentation
+## Frontend
 
-Visit our [docs](https://docs.scaffoldeth.io) to learn how to start building with Scaffold-ETH 2.
+### Используемые хуки Scaffold-ETH-2
 
-To know more about its features, check out our [website](https://scaffoldeth.io).
+- `useScaffoldReadContract` — получение количества голосов
+- `useScaffoldWriteContract` — отправка транзакций голосования
 
-## Contributing to Scaffold-ETH 2
+### Подключение кошелька
 
-We welcome contributions to Scaffold-ETH 2!
+Реализовано через RainbowKit + Wagmi.
 
-Please see [CONTRIBUTING.MD](https://github.com/scaffold-eth/scaffold-eth-2/blob/main/CONTRIBUTING.md) for more information and guidelines for contributing to Scaffold-ETH 2.
+После подключения MetaMask пользователь:
+
+- видит свой адрес
+- видит баланс
+- может отправлять транзакции голосования
+
+### Отображение статуса транзакций
+
+Во время отправки транзакции интерфейс показывает:
+
+- отправка транзакции
+- ожидание подтверждения
+- успешное выполнение
+- ошибку при отклонении
+
+---
+
+## Быстрый старт
+
+### 1. Клонируйте репозиторий
+
+```bash
+git clone https://github.com/MaxKedroff/voting-dapp-kedrov.git
+cd voting-dapp-kedrov
+```
+
+### 2. Установите зависимости
+
+```bash
+npm install
+```
+
+### 3. Запустите локальную сеть Hardhat
+
+```bash
+npm run chain
+```
+
+### 4. Задеплойте контракт (в отдельном терминале)
+
+```bash
+npm run deploy
+```
+
+### 5. Запустите frontend
+
+```bash
+npm run start
+```
+
+Приложение будет доступно по адресу:
+
+```text
+http://localhost:3000
+```
+
+Для работы требуется расширение MetaMask.
+
+Импортируйте один из тестовых аккаунтов Hardhat — приватные ключи выводятся при запуске локальной сети.
+
+---
+
+## Тестирование
+
+### Автоматическое тестирование смарт-контракта
+
+```bash
+npm run test
+```
+
+Тесты проверяют:
+
+- голосование «За» и «Против»
+- невозможность повторного голосования
+- корректное изменение счётчиков
+- генерацию событий
+
+---
+
+## Ручное тестирование
+
+### Подключение MetaMask
+
+При нажатии на кнопку голосования приложение запрашивает подключение кошелька.
+
+После авторизации отображаются:
+
+- адрес пользователя
+- баланс аккаунта
+
+### Голосование
+
+После нажатия:
+
+- `Vote For`
+- `Vote Against`
+
+MetaMask показывает запрос на подтверждение транзакции.
+
+После подтверждения:
+
+- счётчик голосов обновляется
+- транзакция записывается в блокчейн
+- баланс пользователя уменьшается на комиссию (`gas fee`)
+
+### Защита от повторного голосования
+
+При повторной попытке проголосовать транзакция отклоняется с ошибкой:
+
+```text
+You already voted
+```
+
+---
+
+## Пример работы приложения
+
+1. Пользователь подключает MetaMask
+2. Видит текущие результаты голосования
+3. Выбирает `Vote For` или `Vote Against`
+4. Подтверждает транзакцию
+5. Данные записываются в блокчейн
+6. Интерфейс автоматически обновляет результаты
+7. Повторное голосование блокируется смарт-контрактом
+
+---
+
+## Результаты работы
+
+Разработано DApp-приложение для прозрачного голосования «За / Против» со следующими возможностями:
+
+- хранение голосов в блокчейне
+- прозрачность результатов
+- защита от повторного голосования
+- взаимодействие через MetaMask
+- отображение статуса транзакций
+- автоматическое обновление результатов после подтверждения блока
+
+---
+
+## Автор
+
+**Кедров Максим Алексеевич**  
+Группа: РИ-330946
+
+Разработка смарт-контракта и frontend-интерфейса.
+
+Руководитель: **Саиф М.А.**
+
+Екатеринбург, 2026
